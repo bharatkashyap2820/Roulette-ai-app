@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Roulette AI">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>Roulette AI</title>
+<title>Roulette AI · TFJS Plugin</title>
 <style>
 :root{color-scheme:dark;--bg:#0b1220;--panel:#121d2e;--panel2:#1a2940;--line:#293951;--txt:#eef4ff;--muted:#9eb0c9;--accent:#55d6a5;--gold:#f4c96b;--red:#ed6672}
 *{box-sizing:border-box}body{margin:0;background:linear-gradient(160deg,#101c30,#090e18 60%);color:var(--txt);font:16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:env(safe-area-inset-top) 14px calc(24px + env(safe-area-inset-bottom))}
@@ -24,6 +24,18 @@ button{cursor:pointer}.actions{display:flex;gap:8px;margin-top:12px}.primary{bac
 .smallbtn{background:transparent;color:var(--muted);border:1px solid var(--line);border-radius:9px;padding:7px 10px}.notice{border-left:3px solid var(--gold);padding:10px 12px;background:#302a1c;border-radius:8px;color:#f5dfaa;font-size:12px;line-height:1.5}
 footer{text-align:center;color:var(--muted);font-size:11px;padding:16px}
 @media(min-width:600px){.grid{grid-template-columns:repeat(10,1fr)}}
+
+select{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:9px;padding:9px;font-size:13px;max-width:100%}
+.plugin-status{margin:12px 0 0;color:var(--muted);font-size:13px;line-height:1.5}
+.inline-label{color:var(--muted);font-size:13px;display:flex;align-items:center;gap:7px}
+.check-label{margin-top:12px;display:flex;align-items:center;gap:9px;color:var(--muted);font-size:13px}
+.check-label input{accent-color:var(--accent)}
+.metrics.four{grid-template-columns:repeat(2,1fr)}
+.metrics.four .metric strong{font-size:20px}
+#aiCompare{color:var(--muted);font-size:12px;line-height:1.5;margin-top:10px}
+input[type=file]{display:none}
+.tiny{font-size:11px;color:var(--muted)}
+@media(min-width:600px){.metrics.four{grid-template-columns:repeat(4,1fr)}}
 </style>
 </head>
 <body><main>
@@ -35,93 +47,256 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:16px}
 <div class="actions"><button class="primary" id="addBtn" disabled>Add result</button><button class="secondary" id="clearPick">Clear</button></div>
 </section>
 <section class="card">
-<div class="row"><h2>2. History-based next-spin picks</h2><button class="smallbtn" id="refreshPicks">Re-analyze history</button></div>
+<div class="row"><h2>2. Next-spin picks (experimental)</h2><button class="smallbtn" id="refreshPicks">Re-analyze history</button></div>
 <div class="picks" id="picks"></div>
-<p class="muted" id="pickNote">Five random selections refresh automatically after each saved result. They are not predictions.</p>
+<p class="muted" id="pickNote">Picks use frequency ranking until you train the AI plugin. These are not reliable forecasts.</p>
 <div class="notice">Important: Fair roulette outcomes are independent. Previous results do not make a number “due” or increase its chance. On a 38-pocket American wheel, each exact number has a 1/38 = 2.63% chance per spin.</div>
 </section>
+<section class="card" id="pluginCard">
+<div class="row"><h2>3. TensorFlow.js AI plugin</h2><span class="pill">OPTIONAL</span></div>
+<p class="muted">A real on-device neural-network demo: past 8 outcomes in, estimated top 5 out. Fair RNG outcomes cannot be predicted reliably. It needs internet on first load for TensorFlow.js.</p>
+<div class="row" style="margin-top:12px;flex-wrap:wrap">
+  <label class="inline-label" for="pickMode">Active pick method
+    <select id="pickMode"><option value="baseline">Frequency baseline</option><option value="ai">AI neural network</option></select>
+  </label>
+  <button class="primary" id="trainAI" style="flex:0 1 auto">Train AI model</button>
+</div>
+<label class="check-label"><input type="checkbox" id="autoTrain" checked> Auto-retrain after every 10 new results (once trained)</label>
+<p id="aiStatus" class="plugin-status" aria-live="polite">Checking for a saved AI model…</p>
+<div class="row" style="align-items:flex-start; margin-top:10px;flex-wrap:wrap"><div><div class="tiny">Frequency top 5</div><div class="picks" id="baselinePicks"></div></div><div><div class="tiny">AI top 5</div><div class="picks" id="aiPicks"></div></div></div>
+<div id="aiCompare">AI validation results appear after training. Compare them against a frequency-only baseline on the same holdout.</div>
+</section>
 <section class="card">
-<h2>3. Your session</h2>
+<h2>4. Your session</h2>
 <div class="metrics">
 <div class="metric"><strong id="total">0</strong><span>Results saved</span></div>
 <div class="metric"><strong id="hit">—</strong><span>Last pick hit?</span></div>
 <div class="metric"><strong id="rate">—</strong><span>Top-5 hit rate</span></div>
 </div>
 <p class="muted" id="rateNote">Hit rate counts only results saved after this update, when picks were recorded before the spin.</p>
-<div class="actions"><button class="secondary" id="undo">Undo last</button><button class="secondary" id="export">Export CSV</button><button class="secondary" id="reset">Reset</button></div>
+<div class="metrics four" style="margin-top:12px">
+<div class="metric"><strong id="oneBase">—</strong><span>Frequency · next 1</span></div>
+<div class="metric"><strong id="oneAI">—</strong><span>AI · next 1</span></div>
+<div class="metric"><strong id="fiveBase">—</strong><span>Frequency · next 5</span></div>
+<div class="metric"><strong id="fiveAI">—</strong><span>AI · next 5</span></div>
+</div>
+<p class="muted" id="compareNote">Next-5 tests use complete five-spin windows. Overlapping windows are not independent.</p>
+<div class="actions" style="flex-wrap:wrap"><button class="secondary" id="undo">Undo last</button><button class="secondary" id="export">Export CSV</button><button class="secondary" id="backup">Backup JSON</button><button class="secondary" id="import">Import JSON</button><button class="secondary" id="importCsv">Import CSV</button><button class="secondary" id="reset">Reset</button></div>
+<input type="file" id="importFile" accept=".json,application/json">
+<input type="file" id="importCsvFile" accept=".csv,text/csv">
+<p class="tiny">Existing data keys are preserved. Browser storage belongs to each website address: export/import JSON when moving to a new site.</p>
 </section>
 <section class="card">
-<div class="row"><h2>4. Recent results</h2><span class="muted" id="countLabel">0 saved</span></div>
+<div class="row"><h2>5. Recent results</h2><span class="muted" id="countLabel">0 saved</span></div>
 <div class="history" id="history"><span class="muted">No results yet.</span></div>
 </section>
 <section class="card">
-<h2>5. Frequency (descriptive only)</h2>
+<h2>6. Frequency (descriptive only)</h2>
 <p class="muted">Shows what appeared in your saved history. It does not forecast the next spin.</p>
 <div id="frequency"></div>
 </section>
-<footer>Data stays in this browser on this iPhone. This app does not connect to the casino or guarantee winnings.</footer>
+<footer>Data stays in this browser on this iPhone. The AI plugin runs in your browser and never connects to the casino. It does not guarantee winnings.</footer>
 </main>
+<script src="./ai-plugin.js"></script>
 <script>
-const pockets=["0","00",...Array.from({length:36},(_,i)=>String(i+1))];
+'use strict';
+const pockets=['0','00',...Array.from({length:36},(_,i)=>String(i+1))];
 const redSet=new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
 const $=id=>document.getElementById(id);
-function readArray(key){try{const x=JSON.parse(localStorage.getItem(key)||"[]");return Array.isArray(x)?x:[]}catch{return []}}
+const plugin=window.RouletteAIPlugin;
+function readArray(key){try{const value=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(value)?value:[]}catch{return []}}
+function isValidFive(arr){return Array.isArray(arr)&&arr.length===5&&new Set(arr).size===5&&arr.every(n=>pockets.includes(String(n)))}
+let results=readArray('rai_results').filter(n=>pockets.includes(String(n))).map(String);
+let attempts=readArray('rai_attempts').filter(a=>a&&typeof a==='object');
+let currentPicks=readArray('rai_current_picks').filter(n=>pockets.includes(String(n))).map(String);
+let aiPicks=[];
+let baselinePicks=[];
 let selected=null;
-let results=readArray("rai_results").filter(n=>pockets.includes(String(n))).map(String);
-let attempts=readArray("rai_attempts");
-let currentPicks=readArray("rai_current_picks").filter(n=>pockets.includes(n));
-function cls(n){if(n==="0"||n==="00")return "green";return redSet.has(+n)?"red":"black"}
-function renderGrid(){ $("numberGrid").innerHTML=pockets.map(n=>`<button class="num ${cls(n)} ${selected===n?'selected':''}" data-n="${n}">${n}</button>`).join("");document.querySelectorAll(".num").forEach(b=>b.onclick=()=>{selected=b.dataset.n;renderGrid();$("addBtn").disabled=false})}
-function save(){localStorage.setItem("rai_results",JSON.stringify(results));localStorage.setItem("rai_attempts",JSON.stringify(attempts));localStorage.setItem("rai_current_picks",JSON.stringify(currentPicks));render()}
-// Deterministic, history-based ranking. No randomness and no trained ML model.
-// A small baseline avoids treating unseen numbers as impossible.
-function rankedPicks(){
- const recent=results.slice(-200);
- const counts=Object.fromEntries(pockets.map(n=>[n,0]));
- const transitions=Object.fromEntries(pockets.map(n=>[n,0]));
- const previous=results.at(-1);
- recent.forEach((n,i)=>{
-   // Recent observations carry slightly more weight than older ones.
-   counts[n]+=0.5+0.5*(i+1)/recent.length;
- });
- // Only use previous-number transitions if there are enough observations.
- let transitionSamples=0;
- for(let i=1;i<results.length;i++){
-   if(results[i-1]===previous){transitions[results[i]]++;transitionSamples++}
- }
- const transitionWeight=transitionSamples>=20?0.25:0;
- return [...pockets].sort((a,b)=>{
-   const score=n=>counts[n]+transitionWeight*(transitions[n]/transitionSamples)*recent.length;
-   return score(b)-score(a)||pockets.indexOf(a)-pockets.indexOf(b);
- }).slice(0,5);
+let busy=true;
+let pickMode=localStorage.getItem('rai_pick_mode')==='ai'?'ai':'baseline';
+$('autoTrain').checked=localStorage.getItem('rai_auto_train')!=='false';
+function cls(n){if(n==='0'||n==='00')return'green';return redSet.has(+n)?'red':'black'}
+function picksHTML(picks){return picks.length?picks.map(n=>`<span class="pick ${cls(n)}">${n}</span>`).join(''):'<span class="muted">Not trained</span>'}
+function renderGrid(){
+ $('numberGrid').innerHTML=pockets.map(n=>`<button class="num ${cls(n)} ${selected===n?'selected':''}" data-n="${n}">${n}</button>`).join('');
+ document.querySelectorAll('.num').forEach(b=>b.onclick=()=>{selected=b.dataset.n;renderGrid()});
+ $('addBtn').disabled=selected===null||busy;
 }
-function pick(){
- currentPicks=rankedPicks();
- localStorage.setItem("rai_current_picks",JSON.stringify(currentPicks));
- renderPicks();
- $("pickNote").textContent=results.length
-  ?`Analyzed ${Math.min(results.length,200)} recent results. These are statistical rankings, not guaranteed predictions.`
-  :"No history yet. Initial numbers are placeholders; add results to start analysis.";
+function setStatus(msg){$('aiStatus').textContent=msg}
+function save(){
+ try{
+  localStorage.setItem('rai_results',JSON.stringify(results));
+  localStorage.setItem('rai_attempts',JSON.stringify(attempts));
+  localStorage.setItem('rai_current_picks',JSON.stringify(currentPicks));
+  localStorage.setItem('rai_pick_mode',pickMode);
+  localStorage.setItem('rai_auto_train',String($('autoTrain').checked));
+ }catch{setStatus('Browser storage is unavailable/full. Export JSON immediately.');}
+ render();
 }
-function renderPicks(){$("picks").innerHTML=currentPicks.map(n=>`<span class="pick ${cls(n)}">${n}</span>`).join("")}
+function refreshPredictions(){
+ baselinePicks=plugin.rankBaseline(results);
+ aiPicks=plugin.predict(results)||[];
+ if(pickMode==='ai'&&!isValidFive(aiPicks))pickMode='baseline';
+ currentPicks=(pickMode==='ai'?aiPicks:baselinePicks).slice();
+ $('pickMode').value=pickMode;
+ $('pickMode').querySelector('option[value="ai"]').disabled=!isValidFive(aiPicks);
+ $('picks').innerHTML=picksHTML(currentPicks);
+ $('baselinePicks').innerHTML=picksHTML(baselinePicks);
+ $('aiPicks').innerHTML=picksHTML(aiPicks);
+ $('pickNote').textContent=`Showing ${pickMode==='ai'?'AI':'frequency'} picks for the NEXT spin only. These are experimental selections, not reliable predictions.`;
+}
+function percentage(hits,total){return total?`${(100*hits/total).toFixed(1)}%`:'—'}
+function audit(pickName,kind){
+ const data=attempts.map(a=>({index:Number(a.index),picks:pickName==='base'?(a.baselinePicks||a.picks):a.aiPicks}))
+ .filter(a=>Number.isInteger(a.index)&&a.index>=0&&isValidFive(a.picks));
+ const complete=data.filter(a=>a.index+(kind==='five'?5:1)<=results.length);
+ return {n:complete.length,hits:complete.filter(a=>{
+  const targets=results.slice(a.index,a.index+(kind==='five'?5:1));
+  return targets.some(n=>a.picks.includes(n));
+ }).length};
+}
 function render(){
- $("total").textContent=results.length;$("countLabel").textContent=results.length+" saved";
- $("history").innerHTML=results.length?results.slice().reverse().slice(0,80).map(n=>`<span class="chip ${cls(n)}">${n}</span>`).join(""):'<span class="muted">No results yet.</span>';
- const valid=attempts.filter(a=>a&&Array.isArray(a.picks)&&a.picks.length===5&&pockets.includes(a.result));
- const hitCount=valid.filter(a=>a.picks.includes(a.result)).length;
- $("rate").textContent=valid.length?`${(100*hitCount/valid.length).toFixed(1)}%`:"—";
- $("hit").textContent=valid.length?(valid[valid.length-1].picks.includes(valid[valid.length-1].result)?"Yes":"No"):"—";
- $("rateNote").textContent=`${valid.length} recorded pick tests · ${hitCount} hits. Older saved results without recorded picks are excluded.`;
+ $('total').textContent=results.length;
+ $('countLabel').textContent=`${results.length} saved`;
+ $('history').innerHTML=results.length?results.slice(-80).reverse().map(n=>`<span class="chip ${cls(n)}">${n}</span>`).join(''):'<span class="muted">No results yet.</span>';
+ const valid=attempts.filter(a=>isValidFive(a.picks)&&Number.isInteger(a.index)&&a.index>=0&&a.index<results.length&&pockets.includes(a.result));
+ const hits=valid.filter(a=>a.picks.includes(a.result)).length;
+ $('rate').textContent=percentage(hits,valid.length);
+ $('hit').textContent=valid.length?(valid[valid.length-1].picks.includes(valid[valid.length-1].result)?'Yes':'No'):'—';
+ $('rateNote').textContent=`${valid.length} recorded next-spin tests · ${hits} hits (active method at time of pick). Old saved records stay intact.`;
+ const oneBase=audit('base','one'),oneAI=audit('ai','one'),fiveBase=audit('base','five'),fiveAI=audit('ai','five');
+ $('oneBase').textContent=percentage(oneBase.hits,oneBase.n);
+ $('oneAI').textContent=percentage(oneAI.hits,oneAI.n);
+ $('fiveBase').textContent=percentage(fiveBase.hits,fiveBase.n);
+ $('fiveAI').textContent=percentage(fiveAI.hits,fiveAI.n);
+ $('compareNote').textContent=`Completed tests: next-spin frequency ${oneBase.n}, AI ${oneAI.n}; next-5 frequency ${fiveBase.n}, AI ${fiveAI.n}. Five-spin windows overlap, so percentages are not independent. Fair-wheel reference: 13.16% (next 1), ~50.6% (next 5).`;
  let counts=Object.fromEntries(pockets.map(n=>[n,0]));results.forEach(n=>counts[n]++);
  let max=Math.max(1,...Object.values(counts));
- $("frequency").innerHTML=pockets.map(n=>({n,c:counts[n]})).filter(x=>x.c>0).sort((a,b)=>b.c-a.c).slice(0,10).map(x=>`<div class="barrow"><b>${x.n}</b><div class="bar"><i style="width:${x.c/max*100}%"></i></div><span>${x.c}</span></div>`).join("")||'<span class="muted">Add results to see frequency.</span>';
+ $('frequency').innerHTML=pockets.map(n=>({n,c:counts[n]})).filter(x=>x.c>0).sort((a,b)=>b.c-a.c).slice(0,10).map(x=>`<div class="barrow"><b>${x.n}</b><div class="bar"><i style="width:${x.c/max*100}%"></i></div><span>${x.c}</span></div>`).join('')||'<span class="muted">Add results to see frequency.</span>';
 }
-$("addBtn").onclick=()=>{if(selected!==null){const outcome=selected;attempts.push({result:outcome,picks:[...currentPicks],index:results.length});results.push(outcome);selected=null;$("addBtn").disabled=true;renderGrid();pick();save()}};
-$("clearPick").onclick=()=>{selected=null;$("addBtn").disabled=true;renderGrid()};
-$("refreshPicks").onclick=pick;
-$("undo").onclick=()=>{if(!results.length)return;const lastIndex=results.length-1;results.pop();if(attempts.length&&attempts[attempts.length-1].index===lastIndex){const last=attempts.pop();currentPicks=[...last.picks];renderPicks()}save()};
-$("reset").onclick=()=>{if(confirm("Delete all saved results and pick tests on this iPhone?")){results=[];attempts=[];pick();save()}};
-$("export").onclick=()=>{let csv="spin,result\n"+results.map((n,i)=>`${i+1},${n}`).join("\n");let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="roulette-results.csv";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
-renderGrid();pick();render();
-if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
-</script></body></html>
+function renderValidation(meta){
+ if(!meta){$('aiCompare').textContent='No saved trained model. Holdout comparison will appear after training.';return;}
+ $('aiCompare').textContent=`Last training: ${meta.trainedOn} results · held-out ${meta.valCount} future spins · AI top-5 ${meta.aiHits}/${meta.valCount} (${percentage(meta.aiHits,meta.valCount)}), frequency ${meta.baselineHits}/${meta.valCount} (${percentage(meta.baselineHits,meta.valCount)}). A tiny holdout is unreliable, and these scores are NOT future accuracy guarantees.`;
+}
+function setBusy(state){busy=state;renderGrid();$('trainAI').disabled=state;$('pickMode').disabled=state;$('refreshPicks').disabled=state}
+async function trainAI(){
+ if(results.length<plugin.MIN_RESULTS){setStatus(`Need ${plugin.MIN_RESULTS} saved results to run the AI demo. You have ${results.length}.`);return;}
+ setBusy(true);
+ try{
+  const meta=await plugin.train(results,setStatus);
+  pickMode='ai';
+  refreshPredictions();save();renderValidation(meta);
+  setStatus(`AI trained locally on ${meta.trainedOn} results. Still no predictive edge established for fair RNG. Model ${new Date(meta.trainedAt).toLocaleString()}.`);
+ }catch(e){setStatus(`AI error: ${e.message}. Frequency picks still work.`)}
+ finally{setBusy(false)}
+}
+$('trainAI').onclick=trainAI;
+$('autoTrain').onchange=save;
+$('pickMode').onchange=()=>{pickMode=$('pickMode').value;refreshPredictions();save()};
+$('addBtn').onclick=async()=>{
+ if(selected===null||busy)return;
+ const outcome=selected;
+ const idx=results.length;
+ attempts.push({index:idx,result:outcome,picks:[...currentPicks],baselinePicks:[...baselinePicks],aiPicks:[...aiPicks],method:pickMode});
+ results.push(outcome);selected=null;
+ refreshPredictions();save();renderGrid();
+ const meta=plugin.getMeta();
+ if(meta&&$('autoTrain').checked&&results.length-meta.trainedOn>=10){await trainAI();}
+};
+$('clearPick').onclick=()=>{selected=null;renderGrid()};
+$('refreshPicks').onclick=()=>{refreshPredictions();save()};
+$('undo').onclick=async()=>{
+ if(!results.length||busy)return;
+ const lastIndex=results.length-1;
+ results.pop();
+ attempts=attempts.filter(a=>a.index!==lastIndex);
+ selected=null;
+ const meta=plugin.getMeta();
+ if(meta&&results.length<meta.trainedOn){
+  setBusy(true);
+  await plugin.clear();
+  pickMode='baseline';renderValidation(null);
+  setStatus('Undid a result used for training; outdated AI model cleared. Train again if needed.');
+ }
+ refreshPredictions();save();setBusy(false);
+};
+$('reset').onclick=async()=>{
+ if(!confirm('Delete ALL saved results, predictions and trained AI model from this browser? Export a JSON backup first.'))return;
+ setBusy(true);
+ await plugin.clear();
+ results=[];attempts=[];aiPicks=[];pickMode='baseline';selected=null;
+ refreshPredictions();save();renderValidation(null);setStatus('All local results and model deleted.');setBusy(false);
+};
+function download(text,fileName,mime){
+ const blob=new Blob([text],{type:mime});const url=URL.createObjectURL(blob);
+ const a=document.createElement('a');a.href=url;a.download=fileName;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);
+}
+function csvEscape(value){return '"'+String(value??'').replaceAll('"','""')+'"'}
+$('export').onclick=()=>{
+ const heading=['spin','result','picks_shown','frequency_picks','ai_picks','method','next_spin_hit','complete_next_5','next_5_hit'];
+ const rows=results.map((r,i)=>{
+  const a=attempts.find(x=>x.index===i);
+  const ps=a&&isValidFive(a.picks)?a.picks:[];
+  const baseline=a&&isValidFive(a.baselinePicks)?a.baselinePicks:ps;
+  const ai=a&&isValidFive(a.aiPicks)?a.aiPicks:[];
+  const full=!!a&&isValidFive(a.picks)&&i+5<=results.length;
+  return [i+1,r,ps.join(' '),baseline.join(' '),ai.join(' '),a?.method||'legacy',ps.length?ps.includes(r):'',full,full?results.slice(i,i+5).some(n=>ps.includes(n)):''].map(csvEscape).join(',');
+ });
+ download([heading.map(csvEscape).join(','),...rows].join('\r\n'),'roulette-analysis.csv','text/csv;charset=utf-8');
+};
+$('backup').onclick=()=>{
+ const snapshot={format:'roulette-ai-backup-v2',createdAt:new Date().toISOString(),results,attempts,currentPicks,aiPicks,pickMode,autoTrain:$('autoTrain').checked};
+ download(JSON.stringify(snapshot,null,2),'roulette-backup.json','application/json');
+};
+$('import').onclick=()=>$('importFile').click();
+$('importCsv').onclick=()=>$('importCsvFile').click();
+$('importCsvFile').onchange=async(evt)=>{
+ const file=evt.target.files?.[0];if(!file)return;
+ try{
+  const lines=(await file.text()).replace(/^\uFEFF/,'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+  if(lines.length<2||!/^"?spin"?,"?result"?/i.test(lines[0]))throw new Error('Expected CSV heading: spin,result');
+  const imported=lines.slice(1).map((line,i)=>{
+   const cols=line.split(',');
+   const num=cols[1]?.trim().replace(/^"|"$/g,'');
+   if(Number(cols[0]?.replaceAll('"',''))!==i+1||!pockets.includes(num))throw new Error(`Invalid spin or result on CSV row ${i+2}`);
+   return num;
+  });
+  if(!confirm(`Import ${imported.length} results? Existing ${results.length} results and tests will be replaced. Old CSV files do not contain prediction history.`))return;
+  setBusy(true);await plugin.clear();
+  results=imported;attempts=[];pickMode='baseline';selected=null;
+  refreshPredictions();save();renderValidation(null);
+  setStatus(`Imported ${results.length} CSV results. Older prediction tests cannot be restored from CSV. Train AI if needed.`);
+ }catch(e){alert(`CSV import failed: ${e.message}`)}
+ finally{$('importCsvFile').value='';setBusy(false)}
+};
+$('importFile').onchange=async(evt)=>{
+ const file=evt.target.files?.[0];if(!file)return;
+ try{
+  const payload=JSON.parse(await file.text());
+  if(payload.format!=='roulette-ai-backup-v2'||!Array.isArray(payload.results)||!Array.isArray(payload.attempts)||!payload.results.every(n=>pockets.includes(String(n))))throw new Error('Invalid backup format or results.');
+  if(!confirm(`Replace this browser's ${results.length} saved results with ${payload.results.length} imported results?`))return;
+  setBusy(true);
+  await plugin.clear();
+  results=payload.results.map(String);
+  attempts=payload.attempts.filter(a=>a&&Number.isInteger(a.index)&&a.index>=0&&a.index<results.length&&isValidFive(a.picks)&&String(a.result)===results[a.index]).map(a=>({...a,result:String(a.result),picks:a.picks.map(String),baselinePicks:isValidFive(a.baselinePicks)?a.baselinePicks.map(String):undefined,aiPicks:isValidFive(a.aiPicks)?a.aiPicks.map(String):[]}));
+  pickMode='baseline';selected=null;
+  refreshPredictions();save();renderValidation(null);
+  setStatus(`Imported ${results.length} results. Train AI again on the imported history.`);
+ }catch(e){alert(`Import failed: ${e.message}`)}
+ finally{$('importFile').value='';setBusy(false)}
+};
+async function start(){
+ const desiredMode=pickMode;
+ refreshPredictions();render();renderGrid();
+ if(results.length<plugin.MIN_RESULTS){setStatus(`${results.length} saved results. AI demo unlocks at ${plugin.MIN_RESULTS}; 50 is still far too little for reliable modeling.`);setBusy(false);return;}
+ const exists=!!localStorage.getItem('rai_ai_model_meta');
+ if(exists){setStatus('Loading saved AI model…');const meta=await plugin.restore(results);
+  if(meta){pickMode=desiredMode;refreshPredictions();save();renderValidation(meta);setStatus(`Saved AI model ready (${meta.trainedOn} results at training).`)}
+  else setStatus('Saved model could not be loaded (or history changed). Train AI again; internet is required for TensorFlow.js.');
+ }else setStatus(`${results.length} results ready. Tap “Train AI model” to load TensorFlow.js and train on-device. Short histories will overfit.`);
+ setBusy(false);
+}
+start();
+if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+</script>
+</body></html>
