@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#101827">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Roulette AI">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Roulette AI</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--panel:#121d2e;--panel2:#1a2940;--line:#293951;--txt:#eef4ff;--muted:#9eb0c9;--accent:#55d6a5;--gold:#f4c96b;--red:#ed6672}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(160deg,#101c30,#090e18 60%);color:var(--txt);font:16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:env(safe-area-inset-top) 14px calc(24px + env(safe-area-inset-bottom))}
+main{max-width:720px;margin:0 auto}.top{padding:22px 4px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px}.brand{font-size:24px;font-weight:800;letter-spacing:-.5px}.sub{color:var(--muted);font-size:12px;margin-top:4px}.pill{border:1px solid #315b50;color:var(--accent);border-radius:99px;padding:6px 10px;font-size:11px}
+.card{background:rgba(18,29,46,.96);border:1px solid var(--line);border-radius:18px;padding:16px;margin:12px 0;box-shadow:0 12px 28px #0003}
+h2{font-size:16px;margin:0 0 12px}.muted{color:var(--muted);font-size:13px;line-height:1.45}
+.grid{display:grid;grid-template-columns:repeat(6,1fr);gap:7px}.num{border:1px solid var(--line);background:var(--panel2);color:var(--txt);border-radius:11px;min-height:45px;font-weight:700;font-size:16px}.num:active{transform:scale(.96)}.num.zero{background:#146b4c}.num.double{background:#146b4c}.num.red{background:#9f2938}.num.black{background:#27364c}.num.selected{outline:3px solid var(--gold);outline-offset:1px}
+button{cursor:pointer}.actions{display:flex;gap:8px;margin-top:12px}.primary{background:var(--accent);color:#062016;border:0;border-radius:12px;padding:12px 16px;font-weight:800;flex:1}.secondary{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-weight:700}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.metric{background:var(--panel2);border-radius:12px;padding:12px}.metric strong{display:block;font-size:22px}.metric span{color:var(--muted);font-size:11px}
+.picks{display:flex;gap:8px;flex-wrap:wrap}.pick{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:#26374d;border:1px solid #42536a;font-weight:800}.pick.green{background:#146b4c}.history{display:flex;flex-wrap:wrap;gap:6px}.chip{padding:7px 10px;border-radius:9px;background:var(--panel2);font-weight:700;font-size:13px}.chip.green{background:#146b4c}.chip.red{background:#9f2938}.chip.black{background:#27364c}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px}.barrow{display:grid;grid-template-columns:34px 1fr 32px;gap:8px;align-items:center;margin:7px 0;font-size:12px}.bar{height:8px;background:#26374d;border-radius:99px;overflow:hidden}.bar i{display:block;height:100%;background:var(--accent);border-radius:99px}
+.smallbtn{background:transparent;color:var(--muted);border:1px solid var(--line);border-radius:9px;padding:7px 10px}.notice{border-left:3px solid var(--gold);padding:10px 12px;background:#302a1c;border-radius:8px;color:#f5dfaa;font-size:12px;line-height:1.5}
+footer{text-align:center;color:var(--muted);font-size:11px;padding:16px}
+@media(min-width:600px){.grid{grid-template-columns:repeat(10,1fr)}}
+</style>
+</head>
+<body><main>
+<header class="top"><div><div class="brand">🎯 Roulette AI</div><div class="sub">American wheel · 0, 00, 1–36</div></div><span class="pill">ON-DEVICE</span></header>
+<section class="card">
+<h2>1. Add the result</h2>
+<p class="muted">Android game par jo winning number aaye, yahan tap karo.</p>
+<div class="grid" id="numberGrid"></div>
+<div class="actions"><button class="primary" id="addBtn" disabled>Add result</button><button class="secondary" id="clearPick">Clear</button></div>
+</section>
+<section class="card">
+<div class="row"><h2>2. Next-spin picks</h2><button class="smallbtn" id="refreshPicks">New random picks</button></div>
+<div class="picks" id="picks"></div>
+<p class="muted" id="pickNote">Top 5 are equal-chance random selections, not a prediction.</p>
+<div class="notice">Important: Fair roulette outcomes are independent. Previous results do not make a number “due” or increase its chance. On a 38-pocket American wheel, each exact number has a 1/38 = 2.63% chance per spin.</div>
+</section>
+<section class="card">
+<h2>3. Your session</h2>
+<div class="metrics">
+<div class="metric"><strong id="total">0</strong><span>Results saved</span></div>
+<div class="metric"><strong id="hit">—</strong><span>Last pick hit?</span></div>
+<div class="metric"><strong id="rate">—</strong><span>Top-5 hit rate</span></div>
+</div>
+<div class="actions"><button class="secondary" id="undo">Undo last</button><button class="secondary" id="export">Export CSV</button><button class="secondary" id="reset">Reset</button></div>
+</section>
+<section class="card">
+<div class="row"><h2>4. Recent results</h2><span class="muted" id="countLabel">0 saved</span></div>
+<div class="history" id="history"><span class="muted">No results yet.</span></div>
+</section>
+<section class="card">
+<h2>5. Frequency (descriptive only)</h2>
+<p class="muted">Shows what appeared in your saved history. It does not forecast the next spin.</p>
+<div id="frequency"></div>
+</section>
+<footer>Data stays in this browser on this iPhone. This app does not connect to the casino or guarantee winnings.</footer>
+</main>
+<script>
+const pockets=["0","00",...Array.from({length:36},(_,i)=>String(i+1))];
+const redSet=new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
+let selected=null, results=JSON.parse(localStorage.getItem("rai_results")||"[]"), currentPicks=[];
+const $=id=>document.getElementById(id);
+function cls(n){if(n==="0"||n==="00")return "green";return redSet.has(+n)?"red":"black"}
+function renderGrid(){ $("numberGrid").innerHTML=pockets.map(n=>`<button class="num ${cls(n)} ${selected===n?'selected':''}" data-n="${n}">${n}</button>`).join("");document.querySelectorAll(".num").forEach(b=>b.onclick=()=>{selected=b.dataset.n;renderGrid();$("addBtn").disabled=false})}
+function save(){localStorage.setItem("rai_results",JSON.stringify(results));render()}
+function pick(){let pool=[...pockets];currentPicks=[];while(currentPicks.length<5){let i=Math.floor(Math.random()*pool.length);currentPicks.push(pool.splice(i,1)[0])}renderPicks()}
+function renderPicks(){$("picks").innerHTML=currentPicks.map(n=>`<span class="pick ${cls(n)}">${n}</span>`).join("")}
+function render(){
+ $("total").textContent=results.length;$("countLabel").textContent=results.length+" saved";
+ $("history").innerHTML=results.length?results.slice().reverse().slice(0,80).map(n=>`<span class="chip ${cls(n)}">${n}</span>`).join(""):'<span class="muted">No results yet.</span>';
+ let hitCount=0;results.forEach((n,i)=>{if(i>0&&results[i-1]&&window.pickHistory?.[i-1]?.includes(n))hitCount++});
+ $("rate").textContent=results.length?"Not measured":"—";
+ $("hit").textContent="—";
+ let counts=Object.fromEntries(pockets.map(n=>[n,0]));results.forEach(n=>counts[n]++);
+ let max=Math.max(1,...Object.values(counts));
+ $("frequency").innerHTML=pockets.map(n=>({n,c:counts[n]})).filter(x=>x.c>0).sort((a,b)=>b.c-a.c).slice(0,10).map(x=>`<div class="barrow"><b>${x.n}</b><div class="bar"><i style="width:${x.c/max*100}%"></i></div><span>${x.c}</span></div>`).join("")||'<span class="muted">Add results to see frequency.</span>';
+}
+$("addBtn").onclick=()=>{if(selected!==null){results.push(selected);selected=null;$("addBtn").disabled=true;renderGrid();save()}};
+$("clearPick").onclick=()=>{selected=null;$("addBtn").disabled=true;renderGrid()};
+$("refreshPicks").onclick=pick;
+$("undo").onclick=()=>{results.pop();save()};
+$("reset").onclick=()=>{if(confirm("Delete all saved results on this iPhone?")){results=[];save()}};
+$("export").onclick=()=>{let csv="spin,result\\n"+results.map((n,i)=>`${i+1},${n}`).join("\\n");let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="roulette-results.csv";a.click();URL.revokeObjectURL(a.href)};
+renderGrid();pick();render();
+if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+</script></body></html>
