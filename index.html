@@ -42,7 +42,7 @@ input[type=file]{display:none}
 <header class="top"><div><div class="brand">🎯 Roulette AI</div><div class="sub">American wheel · 0, 00, 1–36</div></div><span class="pill">ON-DEVICE</span></header>
 <section class="card">
 <h2>1. Add the result</h2>
-<p class="muted">Android game par jo winning number aaye, yahan tap karo.</p>
+<p class="muted">Record observed results only. Consecutive identical numbers can be legitimate.</p>
 <div class="grid" id="numberGrid"></div>
 <div class="actions"><button class="primary" id="addBtn" disabled>Add result</button><button class="secondary" id="clearPick">Clear</button></div>
 </section>
@@ -61,7 +61,7 @@ input[type=file]{display:none}
   </label>
   <button class="primary" id="trainAI" style="flex:0 1 auto">Train AI model</button>
 </div>
-<label class="check-label"><input type="checkbox" id="autoTrain" checked> Auto-retrain after every 10 new results (once trained)</label>
+<label class="check-label"><input type="checkbox" id="autoTrain"> Auto-retrain after every 10 new results (once trained)</label>
 <p id="aiStatus" class="plugin-status" aria-live="polite">Checking for a saved AI model…</p>
 <div class="row" style="align-items:flex-start; margin-top:10px;flex-wrap:wrap"><div><div class="tiny">Frequency top 5</div><div class="picks" id="baselinePicks"></div></div><div><div class="tiny">AI top 5</div><div class="picks" id="aiPicks"></div></div></div>
 <div id="aiCompare">AI validation results appear after training. Compare them against a frequency-only baseline on the same holdout.</div>
@@ -105,16 +105,20 @@ const redSet=new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
 const $=id=>document.getElementById(id);
 const plugin=window.RouletteAIPlugin;
 function readArray(key){try{const value=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(value)?value:[]}catch{return []}}
-function isValidFive(arr){return Array.isArray(arr)&&arr.length===5&&new Set(arr).size===5&&arr.every(n=>pockets.includes(String(n)))}
+function isValidFive(arr){return Array.isArray(arr)&&arr.length===5&&new Set(arr.map(String)).size===5&&arr.every(n=>pockets.includes(String(n)))}
 let results=readArray('rai_results').filter(n=>pockets.includes(String(n))).map(String);
-let attempts=readArray('rai_attempts').filter(a=>a&&typeof a==='object');
+function cleanAttempts(items, history){
+ const seen=new Set();
+ return items.filter(a=>a&&Number.isInteger(a.index)&&a.index>=0&&a.index<history.length&&String(a.result)===history[a.index]&&isValidFive(a.picks)&&!seen.has(a.index)&&seen.add(a.index)).map(a=>({...a,result:String(a.result),picks:a.picks.map(String),baselinePicks:isValidFive(a.baselinePicks)?a.baselinePicks.map(String):[],aiPicks:isValidFive(a.aiPicks)?a.aiPicks.map(String):[]}));
+}
+let attempts=cleanAttempts(readArray('rai_attempts'),results);
 let currentPicks=readArray('rai_current_picks').filter(n=>pockets.includes(String(n))).map(String);
 let aiPicks=[];
 let baselinePicks=[];
 let selected=null;
 let busy=true;
 let pickMode=localStorage.getItem('rai_pick_mode')==='ai'?'ai':'baseline';
-$('autoTrain').checked=localStorage.getItem('rai_auto_train')!=='false';
+$('autoTrain').checked=localStorage.getItem('rai_auto_train')==='true';
 function cls(n){if(n==='0'||n==='00')return'green';return redSet.has(+n)?'red':'black'}
 function picksHTML(picks){return picks.length?picks.map(n=>`<span class="pick ${cls(n)}">${n}</span>`).join(''):'<span class="muted">Not trained</span>'}
 function renderGrid(){
@@ -147,7 +151,7 @@ function refreshPredictions(){
 }
 function percentage(hits,total){return total?`${(100*hits/total).toFixed(1)}%`:'—'}
 function audit(pickName,kind){
- const data=attempts.map(a=>({index:Number(a.index),picks:pickName==='base'?(a.baselinePicks||a.picks):a.aiPicks}))
+ const data=attempts.map(a=>({index:Number(a.index),picks:pickName==='base'?a.baselinePicks:a.aiPicks}))
  .filter(a=>Number.isInteger(a.index)&&a.index>=0&&isValidFive(a.picks));
  const complete=data.filter(a=>a.index+(kind==='five'?5:1)<=results.length);
  return {n:complete.length,hits:complete.filter(a=>{
@@ -163,13 +167,13 @@ function render(){
  const hits=valid.filter(a=>a.picks.includes(a.result)).length;
  $('rate').textContent=percentage(hits,valid.length);
  $('hit').textContent=valid.length?(valid[valid.length-1].picks.includes(valid[valid.length-1].result)?'Yes':'No'):'—';
- $('rateNote').textContent=`${valid.length} recorded next-spin tests · ${hits} hits (active method at time of pick). Old saved records stay intact.`;
+ $('rateNote').textContent=`${valid.length} recorded next-spin tests · ${hits} hits (active method at time of pick). Duplicate or inconsistent records are excluded.`;
  const oneBase=audit('base','one'),oneAI=audit('ai','one'),fiveBase=audit('base','five'),fiveAI=audit('ai','five');
  $('oneBase').textContent=percentage(oneBase.hits,oneBase.n);
  $('oneAI').textContent=percentage(oneAI.hits,oneAI.n);
  $('fiveBase').textContent=percentage(fiveBase.hits,fiveBase.n);
  $('fiveAI').textContent=percentage(fiveAI.hits,fiveAI.n);
- $('compareNote').textContent=`Completed tests: next-spin frequency ${oneBase.n}, AI ${oneAI.n}; next-5 frequency ${fiveBase.n}, AI ${fiveAI.n}. Five-spin windows overlap, so percentages are not independent. Fair-wheel reference: 13.16% (next 1), ~50.6% (next 5).`;
+ $('compareNote').textContent=`Completed tests: next-spin frequency ${oneBase.n}, AI ${oneAI.n}; next-5 frequency ${fiveBase.n}, AI ${fiveAI.n}. Five-spin windows overlap, so percentages are not independent. Fair 38-pocket reference: 13.16% (next 1), ~50.6% (next 5). Fair 37-pocket reference: 13.51% (next 1). Wheel type must be verified separately.`;
  let counts=Object.fromEntries(pockets.map(n=>[n,0]));results.forEach(n=>counts[n]++);
  let max=Math.max(1,...Object.values(counts));
  $('frequency').innerHTML=pockets.map(n=>({n,c:counts[n]})).filter(x=>x.c>0).sort((a,b)=>b.c-a.c).slice(0,10).map(x=>`<div class="barrow"><b>${x.n}</b><div class="bar"><i style="width:${x.c/max*100}%"></i></div><span>${x.c}</span></div>`).join('')||'<span class="muted">Add results to see frequency.</span>';
@@ -221,6 +225,7 @@ $('undo').onclick=async()=>{
  refreshPredictions();save();setBusy(false);
 };
 $('reset').onclick=async()=>{
+ if(busy)return;
  if(!confirm('Delete ALL saved results, predictions and trained AI model from this browser? Export a JSON backup first.'))return;
  setBusy(true);
  await plugin.clear();
@@ -237,7 +242,7 @@ $('export').onclick=()=>{
  const rows=results.map((r,i)=>{
   const a=attempts.find(x=>x.index===i);
   const ps=a&&isValidFive(a.picks)?a.picks:[];
-  const baseline=a&&isValidFive(a.baselinePicks)?a.baselinePicks:ps;
+  const baseline=a&&isValidFive(a.baselinePicks)?a.baselinePicks:[];
   const ai=a&&isValidFive(a.aiPicks)?a.aiPicks:[];
   const full=!!a&&isValidFive(a.picks)&&i+5<=results.length;
   return [i+1,r,ps.join(' '),baseline.join(' '),ai.join(' '),a?.method||'legacy',ps.length?ps.includes(r):'',full,full?results.slice(i,i+5).some(n=>ps.includes(n)):''].map(csvEscape).join(',');
@@ -248,8 +253,8 @@ $('backup').onclick=()=>{
  const snapshot={format:'roulette-ai-backup-v2',createdAt:new Date().toISOString(),results,attempts,currentPicks,aiPicks,pickMode,autoTrain:$('autoTrain').checked};
  download(JSON.stringify(snapshot,null,2),'roulette-backup.json','application/json');
 };
-$('import').onclick=()=>$('importFile').click();
-$('importCsv').onclick=()=>$('importCsvFile').click();
+$('import').onclick=()=>{if(!busy)$('importFile').click()};
+$('importCsv').onclick=()=>{if(!busy)$('importCsvFile').click()};
 $('importCsvFile').onchange=async(evt)=>{
  const file=evt.target.files?.[0];if(!file)return;
  try{
@@ -278,7 +283,7 @@ $('importFile').onchange=async(evt)=>{
   setBusy(true);
   await plugin.clear();
   results=payload.results.map(String);
-  attempts=payload.attempts.filter(a=>a&&Number.isInteger(a.index)&&a.index>=0&&a.index<results.length&&isValidFive(a.picks)&&String(a.result)===results[a.index]).map(a=>({...a,result:String(a.result),picks:a.picks.map(String),baselinePicks:isValidFive(a.baselinePicks)?a.baselinePicks.map(String):undefined,aiPicks:isValidFive(a.aiPicks)?a.aiPicks.map(String):[]}));
+  attempts=cleanAttempts(payload.attempts,results);
   pickMode='baseline';selected=null;
   refreshPredictions();save();renderValidation(null);
   setStatus(`Imported ${results.length} results. Train AI again on the imported history.`);

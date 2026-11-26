@@ -1,11 +1,11 @@
 /* Same-origin offline shell. Does not intercept casino requests or TensorFlow CDN. */
-const CACHE = 'roulette-ai-shell-v2-20261120';
+const CACHE = 'roulette-ai-shell-v3-audit-20261126';
 const ASSETS = ['./', './index.html', './ai-plugin.js', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', event => {
-  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim()));
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('roulette-ai-shell-') && key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
